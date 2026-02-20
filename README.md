@@ -89,3 +89,10 @@ npm install --legacy-peer-deps
 
 # 5. Запустить фронтенд
 npm start
+```
+После запуска
+Фронтенд: http://localhost:3000
+
+Бэкенд API: http://localhost:3002/api
+
+Тестовый endpoint: http://localhost:3002/api/test
