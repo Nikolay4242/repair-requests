@@ -1,0 +1,417 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ремонтная служба</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 0; padding: 20px; background: #f5f5f5; }
+        .container { max-width: 1200px; margin: 0 auto; }
+        .card { background: white; border-radius: 8px; padding: 20px; margin-bottom: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        .btn { padding: 8px 16px; border: none; border-radius: 4px; cursor: pointer; font-size: 14px; }
+        .btn-primary { background: #4CAF50; color: white; }
+        .btn-primary:hover { background: #45a049; }
+        .btn-danger { background: #f44336; color: white; }
+        .btn-danger:hover { background: #da190b; }
+        .btn-success { background: #2196F3; color: white; }
+        .btn-success:hover { background: #0b7dda; }
+        input, select, textarea { width: 100%; padding: 8px; margin: 5px 0 15px; border: 1px solid #ddd; border-radius: 4px; box-sizing: border-box; }
+        .status-new { background: #e3f2fd; color: #1976d2; padding: 4px 8px; border-radius: 12px; display: inline-block; }
+        .status-assigned { background: #fff3e0; color: #f57c00; padding: 4px 8px; border-radius: 12px; display: inline-block; }
+        .status-in_progress { background: #e8f5e8; color: #388e3c; padding: 4px 8px; border-radius: 12px; display: inline-block; }
+        .status-done { background: #e0e0e0; color: #616161; padding: 4px 8px; border-radius: 12px; display: inline-block; }
+        .status-canceled { background: #ffebee; color: #d32f2f; padding: 4px 8px; border-radius: 12px; display: inline-block; }
+        .error { color: #f44336; margin: 10px 0; padding: 10px; background: #ffebee; border-radius: 4px; }
+        .success { color: #4CAF50; margin: 10px 0; padding: 10px; background: #e8f5e8; border-radius: 4px; }
+        .info { color: #2196F3; margin: 10px 0; padding: 10px; background: #e3f2fd; border-radius: 4px; }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+    <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+    <script type="text/babel">
+        const { useState, useEffect } = React;
+
+        const API_URL = 'http://localhost:3002/api';
+
+        // Компонент логина
+        function Login({ onLogin }) {
+            const [username, setUsername] = useState('dispatcher');
+            const [password, setPassword] = useState('password');
+            const [error, setError] = useState('');
+            const [loading, setLoading] = useState(false);
+
+            const handleSubmit = async (e) => {
+                e.preventDefault();
+                setError('');
+                setLoading(true);
+
+                try {
+                    console.log('Попытка входа...');
+                    const response = await fetch(`${API_URL}/auth/login`, {
+                        method: 'POST',
+                        headers: { 
+                            'Content-Type': 'application/json',
+                            'Accept': 'application/json'
+                        },
+                        body: JSON.stringify({ username, password })
+                    });
+
+                    const data = await response.json();
+                    console.log('Ответ сервера:', data);
+
+                    if (response.ok && data.access_token) {
+                        onLogin(data);
+                    } else {
+                        setError(data.message || 'Ошибка входа');
+                    }
+                } catch (err) {
+                    console.error('Ошибка:', err);
+                    setError('Ошибка подключения к серверу. Убедитесь, что бэкенд запущен на порту 3002');
+                } finally {
+                    setLoading(false);
+                }
+            };
+
+            return (
+                <div className="container" style={{ maxWidth: '400px', margin: '50px auto' }}>
+                    <div className="card">
+                        <h2 style={{ textAlign: 'center' }}>Вход в систему</h2>
+                        
+                        <div className="info">
+                            <strong>✅ Бэкенд доступен</strong><br/>
+                            API: {API_URL}
+                        </div>
+                        
+                        <form onSubmit={handleSubmit}>
+                            <div>
+                                <label>Имя пользователя:</label>
+                                <input
+                                    type="text"
+                                    value={username}
+                                    onChange={(e) => setUsername(e.target.value)}
+                                    disabled={loading}
+                                />
+                            </div>
+                            <div>
+                                <label>Пароль:</label>
+                                <input
+                                    type="password"
+                                    value={password}
+                                    onChange={(e) => setPassword(e.target.value)}
+                                    disabled={loading}
+                                />
+                            </div>
+                            
+                            {error && <div className="error">{error}</div>}
+                            
+                            <button 
+                                type="submit" 
+                                className="btn btn-primary" 
+                                style={{ width: '100%' }}
+                                disabled={loading}
+                            >
+                                {loading ? 'Вход...' : 'Войти'}
+                            </button>
+                        </form>
+                        
+                        <div style={{ marginTop: '20px', fontSize: '14px', color: '#666' }}>
+                            <p><strong>Тестовые пользователи:</strong></p>
+                            <p>Диспетчер: dispatcher / password</p>
+                            <p>Мастер 1: master1 / password</p>
+                            <p>Мастер 2: master2 / password</p>
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+
+        // Компонент панели диспетчера
+        function DispatcherPanel({ user, onLogout }) {
+            const [requests, setRequests] = useState([]);
+            const [filter, setFilter] = useState('all');
+            const [loading, setLoading] = useState(false);
+            const [masters, setMasters] = useState([]);
+            const [showAssignModal, setShowAssignModal] = useState(false);
+            const [selectedRequest, setSelectedRequest] = useState(null);
+            const [selectedMaster, setSelectedMaster] = useState('');
+
+            useEffect(() => {
+                fetchRequests();
+                fetchMasters();
+            }, [filter]);
+
+            const fetchRequests = async () => {
+                setLoading(true);
+                try {
+                    const token = localStorage.getItem('token');
+                    const url = filter === 'all' 
+                        ? `${API_URL}/requests` 
+                        : `${API_URL}/requests?status=${filter}`;
+                    
+                    const response = await fetch(url, {
+                        headers: {
+                            'Authorization': `Bearer ${token}`
+                        }
+                    });
+                    
+                    if (response.ok) {
+                        const data = await response.json();
+                        setRequests(data);
+                    } else {
+                        console.error('Ошибка загрузки заявок');
+                    }
+                } catch (err) {
+                    console.error('Ошибка:', err);
+                } finally {
+                    setLoading(false);
+                }
+            };
+
+            const fetchMasters = async () => {
+                try {
+                    const token = localStorage.getItem('token');
+                    const response = await fetch(`${API_URL}/users/masters`, {
+                        headers: {
+                            'Authorization': `Bearer ${token}`
+                        }
+                    });
+                    
+                    if (response.ok) {
+                        const data = await response.json();
+                        setMasters(data);
+                    }
+                } catch (err) {
+                    console.error('Ошибка загрузки мастеров:', err);
+                }
+            };
+
+            const handleAssign = async () => {
+                if (!selectedMaster) {
+                    alert('Выберите мастера');
+                    return;
+                }
+
+                try {
+                    const token = localStorage.getItem('token');
+                    const response = await fetch(`${API_URL}/requests/${selectedRequest}/assign`, {
+                        method: 'PATCH',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': `Bearer ${token}`
+                        },
+                        body: JSON.stringify({ masterId: parseInt(selectedMaster) })
+                    });
+
+                    if (response.ok) {
+                        setShowAssignModal(false);
+                        fetchRequests();
+                    } else {
+                        alert('Ошибка при назначении мастера');
+                    }
+                } catch (err) {
+                    console.error('Ошибка:', err);
+                    alert('Ошибка сети');
+                }
+            };
+
+            const handleCancel = async (requestId) => {
+                if (!confirm('Отменить заявку?')) return;
+
+                try {
+                    const token = localStorage.getItem('token');
+                    const response = await fetch(`${API_URL}/requests/${requestId}/cancel`, {
+                        method: 'PATCH',
+                        headers: {
+                            'Authorization': `Bearer ${token}`
+                        }
+                    });
+
+                    if (response.ok) {
+                        fetchRequests();
+                    } else {
+                        alert('Ошибка при отмене заявки');
+                    }
+                } catch (err) {
+                    console.error('Ошибка:', err);
+                    alert('Ошибка сети');
+                }
+            };
+
+            const getStatusClass = (status) => `status-${status}`;
+            const getStatusText = (status) => {
+                const map = {
+                    'new': 'Новая',
+                    'assigned': 'Назначена',
+                    'in_progress': 'В работе',
+                    'done': 'Выполнена',
+                    'canceled': 'Отменена'
+                };
+                return map[status] || status;
+            };
+
+            return (
+                <div className="container">
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '20px' }}>
+                        <h1>Панель диспетчера</h1>
+                        <button className="btn btn-danger" onClick={onLogout}>Выйти</button>
+                    </div>
+
+                    <div className="card">
+                        <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+                            <label>Фильтр по статусу:</label>
+                            <select value={filter} onChange={(e) => setFilter(e.target.value)} style={{ width: '200px' }}>
+                                <option value="all">Все</option>
+                                <option value="new">Новые</option>
+                                <option value="assigned">Назначенные</option>
+                                <option value="in_progress">В работе</option>
+                                <option value="done">Выполненные</option>
+                                <option value="canceled">Отмененные</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    {loading ? (
+                        <div className="card">Загрузка заявок...</div>
+                    ) : requests.length === 0 ? (
+                        <div className="card">Нет заявок</div>
+                    ) : (
+                        requests.map(request => (
+                            <div key={request.id} className="card">
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                    <h3>Заявка #{request.id}</h3>
+                                    <span className={getStatusClass(request.status)}>
+                                        {getStatusText(request.status)}
+                                    </span>
+                                </div>
+                                <p><strong>Клиент:</strong> {request.clientName}</p>
+                                <p><strong>Телефон:</strong> {request.phone}</p>
+                                <p><strong>Адрес:</strong> {request.address}</p>
+                                <p><strong>Проблема:</strong> {request.problemText}</p>
+                                
+                                {request.status === 'new' && (
+                                    <div style={{ marginTop: '10px' }}>
+                                        <button 
+                                            className="btn btn-primary" 
+                                            onClick={() => {
+                                                setSelectedRequest(request.id);
+                                                setShowAssignModal(true);
+                                            }}
+                                        >
+                                            Назначить мастера
+                                        </button>
+                                        <button 
+                                            className="btn btn-danger" 
+                                            style={{ marginLeft: '10px' }}
+                                            onClick={() => handleCancel(request.id)}
+                                        >
+                                            Отменить
+                                        </button>
+                                    </div>
+                                )}
+                            </div>
+                        ))
+                    )}
+
+                    {/* Модальное окно назначения мастера */}
+                    {showAssignModal && (
+                        <div style={{
+                            position: 'fixed',
+                            top: 0,
+                            left: 0,
+                            right: 0,
+                            bottom: 0,
+                            backgroundColor: 'rgba(0,0,0,0.5)',
+                            display: 'flex',
+                            justifyContent: 'center',
+                            alignItems: 'center'
+                        }}>
+                            <div className="card" style={{ width: '400px' }}>
+                                <h3>Назначить мастера</h3>
+                                
+                                <div>
+                                    <label>Выберите мастера:</label>
+                                    <select 
+                                        value={selectedMaster} 
+                                        onChange={(e) => setSelectedMaster(e.target.value)}
+                                    >
+                                        <option value="">Выберите...</option>
+                                        <option value="2">Петр Мастеров (ID: 2)</option>
+                                        <option value="3">Сергей Ремонтов (ID: 3)</option>
+                                    </select>
+                                </div>
+
+                                <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end', marginTop: '20px' }}>
+                                    <button 
+                                        className="btn btn-danger"
+                                        onClick={() => setShowAssignModal(false)}
+                                    >
+                                        Отмена
+                                    </button>
+                                    <button 
+                                        className="btn btn-primary"
+                                        onClick={handleAssign}
+                                    >
+                                        Назначить
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+                </div>
+            );
+        }
+
+        // Главный компонент
+        function App() {
+            const [user, setUser] = useState(null);
+
+            useEffect(() => {
+                const token = localStorage.getItem('token');
+                const userStr = localStorage.getItem('user');
+                
+                if (token && userStr) {
+                    setUser(JSON.parse(userStr));
+                }
+            }, []);
+
+            const handleLogin = (data) => {
+                localStorage.setItem('token', data.access_token);
+                localStorage.setItem('user', JSON.stringify({
+                    id: data.userId,
+                    username: data.username,
+                    role: data.role
+                }));
+                setUser({ username: data.username, role: data.role });
+            };
+
+            const handleLogout = () => {
+                localStorage.removeItem('token');
+                localStorage.removeItem('user');
+                setUser(null);
+            };
+
+            if (!user) {
+                return <Login onLogin={handleLogin} />;
+            }
+
+            if (user.role === 'dispatcher') {
+                return <DispatcherPanel user={user} onLogout={handleLogout} />;
+            }
+
+            return (
+                <div className="container">
+                    <h1>Панель мастера</h1>
+                    <button className="btn btn-danger" onClick={handleLogout}>Выйти</button>
+                </div>
+            );
+        }
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
